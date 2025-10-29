@@ -1,0 +1,7 @@
+[theme]
+base="light"  # Alternativ: "dark"
+primaryColor="#FF9479"  # Akzentfarbe (Buttons, Links)
+backgroundColor="#015258"  # 
+secondaryBackgroundColor="#2c755dff"  # Karten- und Chatbubble-Hintergrund
+textColor="#FF9479" 
+font="sans serif"
