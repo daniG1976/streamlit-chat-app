@@ -3,7 +3,6 @@ import requests
 import html
 import re
 
-
 # --- Seitenkonfiguration ---
 st.set_page_config(page_title="Chat App 💬", page_icon="💬")
 
@@ -35,9 +34,9 @@ def get_openrouter_response(user_input):
     except Exception as e:
         return f"⚠️ Fehler bei der Verbindung zur API: {e}"
 
+# --- Styling ---
 st.markdown("""
 <style>
-/* --- Hintergrund & Font --- */
 [data-testid="stAppViewContainer"] {
     background-color: #015258;
 }
@@ -46,7 +45,7 @@ html, body, [class*="css"] {
     color: #FF9479 !important;
 }
 
-/* --- Chat Container --- */
+/* Chatlayout */
 .chat-row {
     display: flex;
     justify-content: flex-start;
@@ -54,68 +53,105 @@ html, body, [class*="css"] {
     margin-bottom: 8px;
     width: 100%;
 }
-.chat-row.bot {
-    justify-content: flex-end;
-}
+.chat-row.bot { justify-content: flex-end; }
 
-/* --- Chatblasen --- */
+/* Chatblasen */
 .chat-bubble {
     position: relative;
-    padding: 10px 14px;
-    border-radius: 16px;
+    padding: 10px 14px 14px 14px;
     max-width: 80%;
     word-wrap: break-word;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    border-radius: 16px;
 }
-
-/* Benutzer (links, grau) */
 .user-bubble {
     background-color: #f1f1f1;
     color: #222;
-    text-align: left;
-    align-self: flex-start;
 }
-
-/* KI (rechts, hellgrün) */
 .bot-bubble {
     background-color: #b2f2bb;
     color: #1b4332;
-    text-align: right;
-    align-self: flex-end;
 }
 
-/* --- Delete-Button im Bubble --- */
+/* --- Animierte Chatblasen --- */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chat-bubble {
+    animation: fadeInUp 0.35s ease-out;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-bubble:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+}
+
+
+/* Delete-Button */
 .delete-btn {
     position: absolute;
-    top: 4px;
-    right: 6px;
+    top: -6px;
+    right: -6px;
     background: none;
     border: none;
     color: #ff6b6b;
-    font-size: 14px;
+    font-size: 16px;
     cursor: pointer;
     padding: 0;
+    line-height: 1;
+    z-index: 10;
 }
-.delete-btn:hover {
-    transform: scale(1.2);
+.delete-btn:hover { transform: scale(1.2); }
+
+@supports (-webkit-touch-callout: none) {
+    .delete-btn {
+        top: 2px !important;
+        right: 4px !important;
+        position: absolute !important;
+        z-index: 99 !important;
+    }
 }
 
-/* --- Chat Input Styling --- */
+/* Chat Input Styling */
 div[data-testid="stChatInput"] {
-    background: rgba(255,255,255,0.1);
-    border: 2px solid rgba(255,255,255,0.3);
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    padding: 8px;
+    background: rgba(255,255,255,0.08) !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 12px !important;
+    padding: 6px 10px !important;
+}
+div[data-testid="stChatInput"] textarea {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    color: #ffffff !important;
+    font-size: 16px !important;
+}
+div[data-testid="stChatInput"] textarea:focus {
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+div[data-testid="stChatInput"] textarea::placeholder {
+    color: rgba(255, 255, 255, 0.5);
 }
 
-/* --- Menü & Footer ausblenden --- */
+/* Menü ausblenden */
 #MainMenu, footer, div[data-testid="stToolbar"] {
     visibility: hidden;
     height: 0;
 }
 
-/* --- Responsive Fix für iPhone --- */
+/* Mobile Anpassung */
 @media (max-width: 600px) {
     .chat-bubble {
         max-width: 90%;
@@ -130,7 +166,6 @@ div[data-testid="stChatInput"] {
 </style>
 """, unsafe_allow_html=True)
 
-
 # --- Titel ---
 st.title("💬 KumpelBot")
 st.write("Lass uns einfach quatschen 👋")
@@ -140,44 +175,38 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def clean_response(text: str) -> str:
-    """Bereinigt Modellantworten von Markup und Sonderzeichen."""
-    # Entfernt [BOUT], [/BOUT], <tags>, etc.
+    """Bereinigt Modellantworten und entfernt Formatierung."""
     text = re.sub(r'\[/?BOUT\]', '', text)
     text = re.sub(r'<[^>]+>', '', text)
-    text = text.strip()
+    text = html.escape(text.strip())
     return text
 
-# --- Chat anzeigen ---
+# --- Nachrichten anzeigen ---
 for i, (sender, msg) in enumerate(st.session_state.messages):
-    # Alignment & Farbe bestimmen
-    if sender == "Du":
-        alignment = "user"
-        bubble_class = "user-bubble"
-    else:
-        alignment = "bot"
-        bubble_class = "bot-bubble"
+    alignment = "user" if sender == "Du" else "bot"
+    bubble_class = "user-bubble" if sender == "Du" else "bot-bubble"
+    msg = clean_response(msg)
 
-    # Layout
-    st.markdown(f"<div class='chat-row {alignment}'>", unsafe_allow_html=True)
-    col1, col2 = st.columns([10, 1])
-
+    col1, col2 = st.columns([0.9, 0.1])
     with col1:
         st.markdown(
-            f"<div class='chat-bubble {bubble_class}'><b>{sender}:</b> {msg}</div>",
+            f"""
+            <div class='chat-row {alignment}'>
+                <div class='chat-bubble {bubble_class}'>
+                    <b>{sender}:</b> {msg}
+                </div>
+            </div>
+            """,
             unsafe_allow_html=True
         )
-
     with col2:
         if st.button("❌", key=f"delete_{i}", help="Nachricht löschen"):
             st.session_state.messages.pop(i)
             st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# --- Neue Nachricht senden ---
-if user := st.chat_input("Hier schreiben..."):
-    st.session_state.messages.append(("Du", user))
-    bot_reply = clean_response(get_openrouter_response(user))
+# --- Eingabe ---
+if user_input := st.chat_input("Hier schreiben..."):
+    st.session_state.messages.append(("Du", user_input))
+    bot_reply = clean_response(get_openrouter_response(user_input))
     st.session_state.messages.append(("Jaques Bubu", bot_reply))
     st.rerun()
-
