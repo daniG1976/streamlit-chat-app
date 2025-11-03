@@ -35,7 +35,6 @@ def get_openrouter_response(user_input):
     except Exception as e:
         return f"⚠️ Fehler bei der Verbindung zur API: {e}"
 
-# --- CSS Styling ---
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] {
@@ -87,7 +86,7 @@ html, body, [class*="css"] {
     align-items: center;
     justify-content: space-between;
     position: fixed;
-    bottom: 12px;
+    bottom: 65px; /* <<-- Abstand vergrößert (vorher 12px) */
     left: 12px;
     right: 12px;
     background: rgba(255,255,255,0.08);
@@ -132,14 +131,18 @@ html, body, [class*="css"] {
     transform: scale(1.2);
 }
 
-/* --- Menü & Toolbar ausblenden --- */
-#MainMenu, footer, div[data-testid="stToolbar"] {
-    visibility: hidden;
-    height: 0;
+/* --- Menü & Footer ausblenden --- */
+#MainMenu, footer, div[data-testid="stToolbar"],
+footer div, .stActionButton {
+    visibility: hidden !important;
+    height: 0 !important;
 }
 
 /* --- Mobile Optimierung --- */
 @media (max-width: 600px) {
+    .input-row {
+        bottom: 80px; /* etwas mehr Platz auf iPhones */
+    }
     .chat-bubble {
         max-width: 90%;
         font-size: 16px;
