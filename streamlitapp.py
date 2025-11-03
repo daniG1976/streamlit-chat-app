@@ -185,48 +185,140 @@ for i, (sender, msg) in enumerate(st.session_state.messages):
 # --- 🎤 Sprachaufnahme + Button in einer Zeile mit Input ---
 components.html("""
 <script>
-const recognition = window.webkitSpeechRecognition ? new webkitSpeechRecognition() : null;
+const recognitionSupported = !!(window.webkitSpeechRecognition || window.SpeechRecognition);
+const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition || null;
+let recognition = null;
 let recognizing = false;
+let pendingTranscript = "";
 
-if (recognition) {
+if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.lang = 'de-DE';
     recognition.interimResults = false;
+
+    recognition.onresult = (event) => {
+        // erstes Ergebnis nehmen
+        try {
+            const text = event.results[0][0].transcript;
+            pendingTranscript = text;
+        } catch (e) {
+            console.log("onresult parse error:", e);
+            pendingTranscript = "";
+        }
+    };
+
+    recognition.onerror = (e) => {
+        console.log("recognition error:", e && e.error ? e.error : e);
+        pendingTranscript = "";
+    };
+
+    recognition.onend = () => {
+        // Wenn beim Enden ein Ergebnis vorhanden ist, verarbeite es
+        const input = window.parent.document.querySelector('textarea');
+        if (input && pendingTranscript) {
+            input.value = pendingTranscript;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            // Simuliere Enter -> Streamlit sendet
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter', code: 'Enter', which: 13, keyCode: 13, bubbles: true
+            });
+            input.dispatchEvent(enterEvent);
+        }
+        pendingTranscript = "";
+        recognizing = false;
+        const micBtn = document.getElementById('mic-btn');
+        if (micBtn) micBtn.classList.remove('mic-active');
+    };
 }
 
 function startRecording() {
     if (!recognition) {
-        alert("Dein Browser unterstützt keine Spracherkennung 😕");
+        alert("Dein Browser unterstützt keine Spracherkennung.");
         return;
     }
-    recognizing = true;
-    const micBtn = document.getElementById('mic-btn');
-    micBtn.classList.add('mic-active');
-    recognition.start();
+    try {
+        pendingTranscript = "";
+        recognition.start();
+        recognizing = true;
+        const micBtn = document.getElementById('mic-btn');
+        if (micBtn) micBtn.classList.add('mic-active');
+    } catch (e) {
+        console.log("startRecording error:", e);
+    }
 }
 
 function stopRecording() {
     if (!recognition || !recognizing) return;
-    recognizing = false;
-    const micBtn = document.getElementById('mic-btn');
-    micBtn.classList.remove('mic-active');
-    recognition.stop();
-
-    const input = window.parent.document.querySelector('textarea');
-    recognition.onresult = (event) => {
-        const text = event.results[0][0].transcript;
-        input.value = text;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-
-        // Automatisch Enter auslösen
-        const enterEvent = new KeyboardEvent('keydown', {
-            key: 'Enter', code: 'Enter', which: 13, keyCode: 13, bubbles: true
-        });
-        input.dispatchEvent(enterEvent);
-    };
-    recognition.onerror = (e) => console.log("Speech error:", e.error);
+    try {
+        recognition.stop();
+        // actual handling happens in recognition.onend
+    } catch (e) {
+        console.log("stopRecording error:", e);
+        recognizing = false;
+        const micBtn = document.getElementById('mic-btn');
+        if (micBtn) micBtn.classList.remove('mic-active');
+    }
 }
+
+// robust event wiring: pointer and touch, plus document-level release
+window.addEventListener('DOMContentLoaded', () => {
+    const micBtn = document.getElementById('mic-btn');
+    if (!micBtn) return;
+
+    // pointer events (preferred)
+    micBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        startRecording();
+    });
+    // document-level pointerup to ensure we catch release even if finger moved
+    document.addEventListener('pointerup', (e) => {
+        if (recognizing) stopRecording();
+    });
+
+    // touch fallback for older devices
+    micBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startRecording();
+    }, {passive:false});
+    document.addEventListener('touchend', (e) => {
+        if (recognizing) stopRecording();
+    });
+
+    // also provide click for desktop quick test (press & release)
+    micBtn.addEventListener('click', (e) => {
+        // if recognition is active, stop; otherwise start briefly
+        if (recognizing) stopRecording();
+        else startRecording();
+    });
+});
 </script>
+
+<style>
+/* Platzierung: rechts neben Input – passt sich deinem Layout an */
+#mic-btn {
+  background:none;
+  border:none;
+  font-size:28px;
+  color:white;
+  cursor:pointer;
+  transition:transform 0.15s ease, box-shadow 0.15s ease;
+  border-radius:50%;
+  padding:6px;
+}
+
+/* Glüh-Effekt während Aufnahme */
+@keyframes pulseGlow {
+    0% { box-shadow: 0 0 0 0 rgba(255, 80, 80, 0.6); }
+    70% { box-shadow: 0 0 0 12px rgba(255, 80, 80, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 80, 80, 0); }
+}
+.mic-active {
+    color: #ff4d4d !important;
+    animation: pulseGlow 1.2s infinite;
+    transform: scale(1.12);
+}
+</style>
 
 <div style="
     display:flex;
@@ -236,25 +328,10 @@ function stopRecording() {
     margin-top:4px;
     gap:8px;
 ">
-  <button id="mic-btn"
-    onmousedown="startRecording()"
-    onmouseup="stopRecording()"
-    ontouchstart="startRecording()"
-    ontouchend="stopRecording()"
-    style="
-      background:none;
-      border:none;
-      font-size:28px;
-      color:white;
-      cursor:pointer;
-      transition:transform 0.2s ease;
-      border-radius:50%;
-      padding:4px;
-    ">
-    🎤
-  </button>
+  <button id="mic-btn" aria-label="Gedrückt halten zum Sprechen">🎤</button>
 </div>
-""", height=80)
+""", height=90)
+
 
 # --- Chat Input ---
 if user_input := st.chat_input("Hier schreiben..."):
