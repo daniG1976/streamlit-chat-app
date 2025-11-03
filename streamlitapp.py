@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import html
 import re
-import streamlit.components.v1 as components
+from streamlit_javascript import st_javascript
 
 # --- Seitenkonfiguration ---
 st.set_page_config(page_title="KumpelBot 💬", page_icon="💬")
@@ -17,24 +17,24 @@ headers = {
 }
 
 def get_openrouter_response(user_input):
-    """Fragt Mistral über OpenRouter ab."""
+    """Abfrage an OpenRouter"""
     data = {
         "model": "mistralai/mistral-7b-instruct",
         "messages": [
-            {"role": "system", "content": "Du bist ein lockerer, sympathischer Kumpel, der immer ausschließlich auf Deutsch antwortet."},
+            {"role": "system", "content": "Du bist Jaques Bubu, ein entspannter, sympathischer Kumpel. Antworte locker und nur auf Deutsch."},
             {"role": "user", "content": user_input}
         ],
         "temperature": 0.8
     }
 
     try:
-        response = requests.post(API_URL, headers=headers, json=data, timeout=30)
+        response = requests.post(API_URL, headers=headers, json=data, timeout=20)
         response.raise_for_status()
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
+        return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"⚠️ Fehler bei der Verbindung zur API: {e}"
+        return f"⚠️ API-Fehler: {e}"
 
+# --- Styling ---
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] {
@@ -45,7 +45,7 @@ html, body, [class*="css"] {
     color: #FF9479 !important;
 }
 
-/* --- Chatlayout --- */
+/* Chatlayout */
 .chat-row {
     display: flex;
     justify-content: flex-start;
@@ -55,7 +55,6 @@ html, body, [class*="css"] {
 }
 .chat-row.bot { justify-content: flex-end; }
 
-/* --- Chatblasen --- */
 .chat-bubble {
     position: relative;
     padding: 10px 14px;
@@ -74,19 +73,18 @@ html, body, [class*="css"] {
     color: #1b4332;
 }
 
-/* --- Animierte Blasen --- */
 @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* --- Eingabeleiste unten --- */
+/* Eingabeleiste unten */
 .input-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: fixed;
-    bottom: 65px; /* <<-- Abstand vergrößert (vorher 12px) */
+    bottom: 65px;
     left: 12px;
     right: 12px;
     background: rgba(255,255,255,0.08);
@@ -96,7 +94,7 @@ html, body, [class*="css"] {
     backdrop-filter: blur(10px);
 }
 
-/* --- Schreibfeld --- */
+/* Eingabefeld */
 #chatInput {
     flex-grow: 1;
     background: transparent;
@@ -111,7 +109,7 @@ html, body, [class*="css"] {
     color: rgba(255,255,255,0.5);
 }
 
-/* --- Buttons --- */
+/* Buttons */
 #micBtn, #sendBtn {
     background: none;
     border: none;
@@ -131,27 +129,21 @@ html, body, [class*="css"] {
     transform: scale(1.2);
 }
 
-/* --- Menü & Footer ausblenden --- */
+/* Menü & Footer ausblenden */
 #MainMenu, footer, div[data-testid="stToolbar"],
 footer div, .stActionButton {
     visibility: hidden !important;
     height: 0 !important;
 }
 
-/* --- Mobile Optimierung --- */
+/* Mobile */
 @media (max-width: 600px) {
     .input-row {
-        bottom: 80px; /* etwas mehr Platz auf iPhones */
+        bottom: 80px;
     }
     .chat-bubble {
         max-width: 90%;
         font-size: 16px;
-    }
-    #chatInput {
-        font-size: 18px;
-    }
-    #micBtn, #sendBtn {
-        font-size: 26px;
     }
 }
 </style>
@@ -159,17 +151,17 @@ footer div, .stActionButton {
 
 # --- Titel ---
 st.title("💬 KumpelBot")
-st.write("Lass uns einfach quatschen 👋")
+st.write("Lass uns quatschen 👋")
 
 # --- Session State ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def clean_response(text: str) -> str:
-    """Bereinigt Modellantworten."""
     text = re.sub(r'\[/?BOUT\]', '', text)
     text = re.sub(r'<[^>]+>', '', text)
-    return html.escape(text.strip())
+    text = html.escape(text.strip())
+    return text
 
 # --- Nachrichten anzeigen ---
 for sender, msg in st.session_state.messages:
@@ -177,81 +169,75 @@ for sender, msg in st.session_state.messages:
     bubble_class = "user-bubble" if sender == "Du" else "bot-bubble"
     msg = clean_response(msg)
     st.markdown(
-        f"""
-        <div class='chat-row {alignment}'>
-            <div class='chat-bubble {bubble_class}'>
-                <b>{sender}:</b> {msg}
-            </div>
-        </div>
-        """,
+        f"<div class='chat-row {alignment}'><div class='chat-bubble {bubble_class}'><b>{sender}:</b> {msg}</div></div>",
         unsafe_allow_html=True
     )
 
-# --- Eingabeleiste mit Mic + Send ---
-st.markdown("""
+# --- Eingabezeile mit Mikro & Senden ---
+components_html = """
 <div class="input-row">
-    <textarea id="chatInput" placeholder="Hier schreiben oder sprechen..." rows="1"></textarea>
+    <input id="chatInput" type="text" placeholder="Hier sprechen oder schreiben..." />
     <button id="micBtn">🎤</button>
     <button id="sendBtn">📨</button>
 </div>
-""", unsafe_allow_html=True)
 
-# --- JavaScript ---
-components.html("""
 <script>
-const micBtn = document.getElementById('micBtn');
-const sendBtn = document.getElementById('sendBtn');
-const chatInput = document.getElementById('chatInput');
+let recognizing = false;
 let recognition;
-let listening = false;
 
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
     recognition.lang = 'de-DE';
-    recognition.continuous = false;
     recognition.interimResults = false;
+    recognition.continuous = false;
 
-    micBtn.onclick = function() {
-        if (!listening) {
-            recognition.start();
-            listening = true;
-            micBtn.classList.add('listening');
-        } else {
-            recognition.stop();
-            listening = false;
-            micBtn.classList.remove('listening');
-        }
+    recognition.onresult = (event) => {
+        const result = event.results[0][0].transcript;
+        document.getElementById("chatInput").value = result;
     };
 
-    recognition.onresult = function(event) {
-        const transcript = event.results[0][0].transcript;
-        chatInput.value = transcript;
-    };
-
-    recognition.onend = function() {
-        listening = false;
-        micBtn.classList.remove('listening');
+    recognition.onend = () => {
+        recognizing = false;
+        document.getElementById("micBtn").classList.remove("listening");
     };
 }
 
-// --- Send Button Funktion ---
-sendBtn.onclick = function() {
-    const msg = chatInput.value.trim();
-    if (msg.length > 0) {
-        const streamlitEvent = new Event("sendMessage");
-        window.dispatchEvent(streamlitEvent);
-        window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", value: msg}, "*");
-        chatInput.value = "";
+document.getElementById("micBtn").addEventListener("click", () => {
+    if (recognizing) {
+        recognition.stop();
+        recognizing = false;
+        document.getElementById("micBtn").classList.remove("listening");
+    } else {
+        recognition.start();
+        recognizing = true;
+        document.getElementById("micBtn").classList.add("listening");
     }
-};
-</script>
-""", height=0)
+});
 
-# --- Eingabe vom JS abfangen ---
-msg = st.experimental_get_query_params().get("value", [None])[0]
-if msg:
-    st.session_state.messages.append(("Du", msg))
-    bot_reply = clean_response(get_openrouter_response(msg))
-    st.session_state.messages.append(("Jaques Bubu", bot_reply))
-    st.experimental_set_query_params(value=None)
+document.getElementById("sendBtn").addEventListener("click", () => {
+    const input = document.getElementById("chatInput").value;
+    if (input.trim() !== "") {
+        window.parent.postMessage({ type: "SEND_MESSAGE", text: input }, "*");
+        document.getElementById("chatInput").value = "";
+    }
+});
+</script>
+"""
+st.components.v1.html(components_html, height=100)
+
+# --- Nachricht von JS empfangen ---
+message = st_javascript("""
+    await new Promise(resolve => {
+        window.addEventListener("message", (event) => {
+            if (event.data.type === "SEND_MESSAGE") {
+                resolve(event.data.text);
+            }
+        });
+    });
+""")
+
+if message:
+    st.session_state.messages.append(("Du", message))
+    reply = clean_response(get_openrouter_response(message))
+    st.session_state.messages.append(("Jaques Bubu", reply))
     st.rerun()
