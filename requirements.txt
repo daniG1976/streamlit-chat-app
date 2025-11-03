@@ -1,0 +1,5 @@
+streamlit
+streamlit-javascript
+requests
+pydub
+SpeechRecognition

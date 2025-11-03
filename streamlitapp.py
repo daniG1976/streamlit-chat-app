@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import html
 import re
-from streamlit_javascript import st_javascript
+import streamlit.components.v1 as components
 
 # --- Seitenkonfiguration ---
 st.set_page_config(page_title="Chat App 💬", page_icon="💬")
@@ -21,7 +21,7 @@ def get_openrouter_response(user_input):
     data = {
         "model": "mistralai/mistral-7b-instruct",
         "messages": [
-            {"role": "system", "content": "Du bist ein lockerer, sympathischer Kumpel, der immer ausschließlich auf Deutsch antwortet.Dein bester Freund ist Daniel, den du schon seit Kindertagen kennst. Du teilst seine Leidenschaft für Fußball, Basketball und den 1. FC Köln."},
+            {"role": "system", "content": "Du bist ein lockerer, sympathischer Kumpel, der immer ausschließlich auf Deutsch antwortet."},
             {"role": "user", "content": f"Antworte bitte auf Deutsch: {user_input}"}
         ],
         "temperature": 0.8
@@ -59,7 +59,7 @@ html, body, [class*="css"] {
 /* Chatblasen */
 .chat-bubble {
     position: relative;
-    padding: 10px 14px 14px 14px;
+    padding: 10px 14px;
     max-width: 80%;
     word-wrap: break-word;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08);
@@ -71,32 +71,32 @@ html, body, [class*="css"] {
 
 /* Animation */
 @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Mikrofonbutton */
+/* Mikro-Button */
+.mic-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
 .mic-btn {
     background: none;
-    border: none;
-    font-size: 26px;
+    border: 2px solid #FF9479;
+    border-radius: 50%;
+    color: white;
+    font-size: 22px;
     cursor: pointer;
-    color: #ffffffcc;
-    transition: all 0.3s ease;
+    width: 42px;
+    height: 42px;
+    transition: all 0.25s ease-in-out;
 }
-.mic-btn.listening {
-    color: #ff4d4d;
-    text-shadow: 0 0 8px #ff4d4d;
-    transform: scale(1.2);
-}
-
-/* Chat Input Styling */
-div[data-testid="stChatInput"] {
-    background: rgba(255,255,255,0.08) !important;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 12px !important;
-    padding: 6px 10px !important;
+.mic-btn.glow {
+    background-color: #FF9479;
+    box-shadow: 0 0 12px #FF9479;
+    transform: scale(1.1);
 }
 
 /* Menü ausblenden */
@@ -116,49 +116,85 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def clean_response(text: str) -> str:
-    text = re.sub(r'\[/?BOUT\]', '', text)
+    """Bereinigt Modellantworten."""
     text = re.sub(r'<[^>]+>', '', text)
-    text = html.escape(text.strip())
-    return text
+    return html.escape(text.strip())
 
 # --- Nachrichten anzeigen ---
-for i, (sender, msg) in enumerate(st.session_state.messages):
+for sender, msg in st.session_state.messages:
     alignment = "user" if sender == "Du" else "bot"
     bubble_class = "user-bubble" if sender == "Du" else "bot-bubble"
     msg = clean_response(msg)
+
     st.markdown(
-        f"<div class='chat-row {alignment}'><div class='chat-bubble {bubble_class}'><b>{sender}:</b> {msg}</div></div>",
+        f"""
+        <div class='chat-row {alignment}'>
+            <div class='chat-bubble {bubble_class}'>
+                <b>{sender}:</b> {msg}
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
-# --- Sprachsteuerung via Browser SpeechRecognition ---
-speech_text = st_javascript("""
-async function recordSpeech() {
-    const btn = document.getElementById('micButton');
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = 'de-DE';
-    recognition.interimResults = false;
-    return new Promise((resolve, reject) => {
-        recognition.onresult = event => resolve(event.results[0][0].transcript);
-        recognition.onerror = event => reject(event.error);
-        btn.classList.add('listening');
-        recognition.start();
-        btn.onmouseup = btn.ontouchend = () => {
-            recognition.stop();
-            btn.classList.remove('listening');
+# --- Eingabefeld + Mikro-Button ---
+components.html(
+    """
+    <div class="mic-container">
+        <textarea id="user_input" placeholder="Hier sprechen oder schreiben..." rows="1"
+            style="flex:1; border-radius:12px; padding:8px; border:none; font-size:16px; resize:none;"></textarea>
+        <button id="micBtn" class="mic-btn">🎤</button>
+    </div>
+
+    <script>
+    const micBtn = document.getElementById("micBtn");
+    const input = document.getElementById("user_input");
+    let recognition;
+    let listening = false;
+
+    if ('webkitSpeechRecognition' in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.lang = 'de-DE';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+            micBtn.classList.add("glow");
+            listening = true;
         };
+        recognition.onend = () => {
+            micBtn.classList.remove("glow");
+            listening = false;
+        };
+        recognition.onresult = (event) => {
+            const text = event.results[0][0].transcript;
+            input.value = text;
+
+            // Automatisch senden an Streamlit
+            const inputEvent = new Event('input', { bubbles: true });
+            input.dispatchEvent(inputEvent);
+
+            setTimeout(() => {
+                window.parent.postMessage({type: 'streamlit:setComponentValue', value: text}, '*');
+            }, 300);
+        };
+    }
+
+    micBtn.addEventListener("click", () => {
+        if (!listening) recognition.start();
+        else recognition.stop();
     });
-}
-""")
+    </script>
+    """,
+    height=90,
+)
 
-# --- Layout: Mikro + Input nebeneinander ---
-col1, col2 = st.columns([0.1, 0.9])
-with col1:
-    st.markdown("<button id='micButton' class='mic-btn'>🎤</button>", unsafe_allow_html=True)
-
-with col2:
-    if user_input := st.chat_input("Hier schreiben oder Mikro halten..."):
+# --- Empfangenes Transkript aus Browser ---
+if (spoken_text := st.experimental_get_query_params().get("text", [None])[0]) or st.session_state.get("spoken_input"):
+    if spoken_text:
+        user_input = spoken_text
         st.session_state.messages.append(("Du", user_input))
         bot_reply = clean_response(get_openrouter_response(user_input))
         st.session_state.messages.append(("Jaques Bubu", bot_reply))
-        st.rerun()
+        st.session_state["spoken_input"] = None
+        st.experimental_rerun()
