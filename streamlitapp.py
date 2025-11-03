@@ -197,20 +197,31 @@ if (SpeechRecognition) {
     recognition.interimResults = false;
 
     recognition.onresult = (event) => {
-        try {
-            const transcript = event.results[0][0].transcript;
-            const input = window.parent.document.querySelector('textarea');
-            if (input) {
-                input.value = transcript;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
+        const transcript = event.results[0][0].transcript;
+        console.log("Erkannt:", transcript);
+
+        // Versuche, Textfeld zu finden
+        const findInput = () => {
+            const allTextareas = window.parent.document.querySelectorAll("textarea");
+            for (const t of allTextareas) {
+                if (t.placeholder?.includes("Hier schreiben")) {
+                    t.value = transcript;
+                    t.dispatchEvent(new Event("input", { bubbles: true }));
+                    console.log("✅ Text erfolgreich eingefügt:", transcript);
+                    return true;
+                }
             }
-        } catch (e) {
-            console.log("Fehler beim Verarbeiten des Ergebnisses:", e);
-        }
+            console.log("❌ Kein passendes Textfeld gefunden");
+            return false;
+        };
+
+        // Wiederhole Suche (iOS braucht kleinen Delay)
+        setTimeout(findInput, 300);
+        setTimeout(findInput, 1000);
     };
 
     recognition.onerror = (event) => {
-        console.log("Spracherkennungsfehler:", event.error);
+        console.log("SpeechRecognition Fehler:", event.error);
     };
 
     recognition.onend = () => {
@@ -253,7 +264,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (recognizing) stopRecording();
     });
 
-    // Fallback für Touch (ältere iPhones)
+    // Touch Fallback für iOS
     micBtn.addEventListener('touchstart', (e) => {
         e.preventDefault();
         startRecording();
@@ -287,21 +298,22 @@ window.addEventListener('DOMContentLoaded', () => {
     animation: pulseGlow 1.2s infinite;
     transform: scale(1.12);
 }
+
+/* Positioniert das Mic rechts neben dem Input */
+.mic-container {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+}
 </style>
 
-<!-- Mic rechts neben Input platzieren -->
-<div style="
-    display:flex;
-    align-items:center;
-    justify-content:flex-end;
-    width:100%;
-    margin-top:4px;
-    gap:8px;
-">
+<div class="mic-container">
   <button id="mic-btn" aria-label="Gedrückt halten zum Sprechen">🎤</button>
 </div>
 """, height=90)
-
 
 
 # --- Chat Input ---
