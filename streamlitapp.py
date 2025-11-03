@@ -189,7 +189,6 @@ const recognitionSupported = !!(window.webkitSpeechRecognition || window.SpeechR
 const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition || null;
 let recognition = null;
 let recognizing = false;
-let pendingTranscript = "";
 
 if (SpeechRecognition) {
     recognition = new SpeechRecognition();
@@ -198,34 +197,23 @@ if (SpeechRecognition) {
     recognition.interimResults = false;
 
     recognition.onresult = (event) => {
-        // erstes Ergebnis nehmen
         try {
-            const text = event.results[0][0].transcript;
-            pendingTranscript = text;
+            const transcript = event.results[0][0].transcript;
+            const input = window.parent.document.querySelector('textarea');
+            if (input) {
+                input.value = transcript;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
         } catch (e) {
-            console.log("onresult parse error:", e);
-            pendingTranscript = "";
+            console.log("Fehler beim Verarbeiten des Ergebnisses:", e);
         }
     };
 
-    recognition.onerror = (e) => {
-        console.log("recognition error:", e && e.error ? e.error : e);
-        pendingTranscript = "";
+    recognition.onerror = (event) => {
+        console.log("Spracherkennungsfehler:", event.error);
     };
 
     recognition.onend = () => {
-        // Wenn beim Enden ein Ergebnis vorhanden ist, verarbeite es
-        const input = window.parent.document.querySelector('textarea');
-        if (input && pendingTranscript) {
-            input.value = pendingTranscript;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            // Simuliere Enter -> Streamlit sendet
-            const enterEvent = new KeyboardEvent('keydown', {
-                key: 'Enter', code: 'Enter', which: 13, keyCode: 13, bubbles: true
-            });
-            input.dispatchEvent(enterEvent);
-        }
-        pendingTranscript = "";
         recognizing = false;
         const micBtn = document.getElementById('mic-btn');
         if (micBtn) micBtn.classList.remove('mic-active');
@@ -238,45 +226,34 @@ function startRecording() {
         return;
     }
     try {
-        pendingTranscript = "";
         recognition.start();
         recognizing = true;
         const micBtn = document.getElementById('mic-btn');
         if (micBtn) micBtn.classList.add('mic-active');
     } catch (e) {
-        console.log("startRecording error:", e);
+        console.log("Startfehler:", e);
     }
 }
 
 function stopRecording() {
-    if (!recognition || !recognizing) return;
-    try {
+    if (recognition && recognizing) {
         recognition.stop();
-        // actual handling happens in recognition.onend
-    } catch (e) {
-        console.log("stopRecording error:", e);
-        recognizing = false;
-        const micBtn = document.getElementById('mic-btn');
-        if (micBtn) micBtn.classList.remove('mic-active');
     }
 }
 
-// robust event wiring: pointer and touch, plus document-level release
 window.addEventListener('DOMContentLoaded', () => {
     const micBtn = document.getElementById('mic-btn');
     if (!micBtn) return;
 
-    // pointer events (preferred)
     micBtn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         startRecording();
     });
-    // document-level pointerup to ensure we catch release even if finger moved
     document.addEventListener('pointerup', (e) => {
         if (recognizing) stopRecording();
     });
 
-    // touch fallback for older devices
+    // Fallback für Touch (ältere iPhones)
     micBtn.addEventListener('touchstart', (e) => {
         e.preventDefault();
         startRecording();
@@ -284,30 +261,22 @@ window.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('touchend', (e) => {
         if (recognizing) stopRecording();
     });
-
-    // also provide click for desktop quick test (press & release)
-    micBtn.addEventListener('click', (e) => {
-        // if recognition is active, stop; otherwise start briefly
-        if (recognizing) stopRecording();
-        else startRecording();
-    });
 });
 </script>
 
 <style>
-/* Platzierung: rechts neben Input – passt sich deinem Layout an */
 #mic-btn {
   background:none;
   border:none;
   font-size:28px;
   color:white;
   cursor:pointer;
-  transition:transform 0.15s ease, box-shadow 0.15s ease;
   border-radius:50%;
   padding:6px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Glüh-Effekt während Aufnahme */
+/* Glüh-Effekt beim Aufnehmen */
 @keyframes pulseGlow {
     0% { box-shadow: 0 0 0 0 rgba(255, 80, 80, 0.6); }
     70% { box-shadow: 0 0 0 12px rgba(255, 80, 80, 0); }
@@ -320,6 +289,7 @@ window.addEventListener('DOMContentLoaded', () => {
 }
 </style>
 
+<!-- Mic rechts neben Input platzieren -->
 <div style="
     display:flex;
     align-items:center;
@@ -331,6 +301,7 @@ window.addEventListener('DOMContentLoaded', () => {
   <button id="mic-btn" aria-label="Gedrückt halten zum Sprechen">🎤</button>
 </div>
 """, height=90)
+
 
 
 # --- Chat Input ---
