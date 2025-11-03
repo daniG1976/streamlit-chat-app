@@ -21,7 +21,7 @@ def get_openrouter_response(user_input):
     data = {
         "model": "mistralai/mistral-7b-instruct",
         "messages": [
-            {"role": "system", "content": "Du bist ein lockerer, sympathischer Kumpel, der immer ausschließlich auf Deutsch antwortet."},
+            {"role": "system", "content": "Du bist ein lockerer, sympathischer Kumpel, der immer ausschließlich auf Deutsch antwortet.Dein bester Freund ist Daniel, den du schon seit Kindertagen kennst. Du teilst seine Leidenschaft für Fußball, Basketball und den 1. FC Köln."},
             {"role": "user", "content": f"Antworte bitte auf Deutsch: {user_input}"}
         ],
         "temperature": 0.8
